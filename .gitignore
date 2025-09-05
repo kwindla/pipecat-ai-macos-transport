@@ -1,0 +1,9 @@
+__pycache__/
+*.pyc
+.pytest_cache/
+*.log
+dist/
+build/
+*.egg-info/
+macos/libvpio.dylib
+
