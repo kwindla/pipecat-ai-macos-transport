@@ -645,7 +645,14 @@ class LocalMacTransport(BaseTransport):
     async def _ensure_stream_started(self):
         if self._stream_started:
             return
-        sr = self._params.audio_in_sample_rate or 16000
+        
+        # Use the higher of input/output sample rates for VPIO initialization
+        # This preserves TTS quality while maintaining VAD compatibility
+        input_sr = self._params.audio_in_sample_rate or 16000
+        output_sr = self._params.audio_out_sample_rate or 16000
+        sr = max(input_sr, output_sr)
+        
+        logger.info(f"VPIO initializing at {sr}Hz (input: {input_sr}Hz, output: {output_sr}Hz)")
         ch = self._params.audio_in_channels
         cap_bytes = int(
             (self._params.ring_capacity_secs if hasattr(self._params, "ring_capacity_secs") else 2.0)
