@@ -74,6 +74,13 @@ Parameters `input_device_name` and `output_device_name` are accepted; current
 helper uses system defaults. Future releases may wire device selection via
 CoreAudio.
 
+## Run a test bot
+
+```bash
+cd test
+uv run bot.py
+```
+
 ## Roadmap
 - Device selection support
 - Prebuilt universal2 wheels

@@ -1,0 +1,19 @@
+[project]
+name = "pipecat-macos-transport-smoke"
+version = "0.0.0"
+description = "Smoke test for LocalMacTransport bot"
+requires-python = ">=3.12,<3.13"
+dependencies = [
+  "pipecat-ai[silero,deepgram,openai,cartesia]==0.0.84",
+  "pipecat-ai-macos-transport",  # local package (path specified below)
+  "python-dotenv>=1.0",
+  "loguru>=0.7",
+  "fastapi>=0.110",
+  "websockets>=12",
+]
+
+[tool.uv]
+package = true
+
+[tool.uv.sources]
+pipecat-ai-macos-transport = { path = "..", editable = true }

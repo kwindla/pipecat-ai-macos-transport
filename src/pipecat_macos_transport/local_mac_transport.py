@@ -19,6 +19,7 @@ from pipecat.processors.frame_processor import FrameProcessor
 from pipecat.transports.base_input import BaseInputTransport
 from pipecat.transports.base_output import BaseOutputTransport
 from pipecat.transports.base_transport import BaseTransport, TransportParams
+from .vad_resample_adapter import ResamplingVADAdapter
 
 
 def _is_macos():
@@ -26,8 +27,8 @@ def _is_macos():
 
 
 class LocalMacTransportParams(TransportParams):
-    audio_in_sample_rate: Optional[int] = 16000
-    audio_out_sample_rate: Optional[int] = 16000
+    audio_in_sample_rate: Optional[int] = None
+    audio_out_sample_rate: Optional[int] = None
     audio_in_channels: int = 1
     audio_out_channels: int = 1
     audio_out_10ms_chunks: int = 1
@@ -182,11 +183,12 @@ class MacInputTransport(BaseInputTransport):
 
     async def start(self, frame: StartFrame):
         await super().start(frame)
+        # Determine effective input sample rate from params or StartFrame
+        self._sample_rate = self._params.audio_in_sample_rate or frame.audio_in_sample_rate
         try:
-            await self._parent._ensure_stream_started()
+            await self._parent._ensure_stream_started(self._sample_rate)
         except Exception:
             logger.exception("Error starting VPIO stream for input")
-        self._sample_rate = self._params.audio_in_sample_rate or frame.audio_in_sample_rate
         self._stop = False
         self._poll_task = self.create_task(self._poll_capture())
         await self.set_transport_ready(frame)
@@ -313,8 +315,10 @@ class MacOutputTransport(BaseOutputTransport):
 
     async def start(self, frame: StartFrame):
         await super().start(frame)
+        # Ensure VPIO stream is started with the effective output rate if needed.
         try:
-            await self._parent._ensure_stream_started()
+            out_sr = self._params.audio_out_sample_rate or frame.audio_out_sample_rate
+            await self._parent._ensure_stream_started(out_sr)
         except Exception:
             logger.exception("Error starting VPIO stream for output")
         if self._has_play_thread and self._has_write_10ms:
@@ -557,6 +561,15 @@ class LocalMacTransport(BaseTransport):
         super().__init__()
         if not _is_macos():
             raise RuntimeError("LocalMacTransport only supported on macOS")
+        # If a VAD analyzer is provided (e.g., Silero), wrap it to resample only for VAD.
+        try:
+            if getattr(params, "vad_analyzer", None) is not None and not isinstance(
+                params.vad_analyzer, ResamplingVADAdapter
+            ):
+                params.vad_analyzer = ResamplingVADAdapter(params.vad_analyzer, target_rate=16000)
+        except Exception:
+            pass
+
         self._params = params
         self._vpio = _VPIOLib(lib_path)
         logger.info(
@@ -642,10 +655,11 @@ class LocalMacTransport(BaseTransport):
             except Exception:
                 logger.exception("Exception in on_client_disconnected handler")
 
-    async def _ensure_stream_started(self):
+    async def _ensure_stream_started(self, sr: Optional[int] = None):
         if self._stream_started:
             return
-        sr = self._params.audio_in_sample_rate or 16000
+        # Prefer explicit argument, else param, else default to 16000
+        sr = sr or self._params.audio_in_sample_rate or 16000
         ch = self._params.audio_in_channels
         cap_bytes = int(
             (self._params.ring_capacity_secs if hasattr(self._params, "ring_capacity_secs") else 2.0)
