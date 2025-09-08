@@ -19,6 +19,7 @@ from pipecat.processors.frame_processor import FrameProcessor
 from pipecat.transports.base_input import BaseInputTransport
 from pipecat.transports.base_output import BaseOutputTransport
 from pipecat.transports.base_transport import BaseTransport, TransportParams
+from .vad_resample_adapter import ResamplingVADAdapter
 
 
 def _is_macos():
@@ -26,8 +27,8 @@ def _is_macos():
 
 
 class LocalMacTransportParams(TransportParams):
-    audio_in_sample_rate: Optional[int] = 16000
-    audio_out_sample_rate: Optional[int] = 16000
+    audio_in_sample_rate: Optional[int] = 48000
+    audio_out_sample_rate: Optional[int] = 48000
     audio_in_channels: int = 1
     audio_out_channels: int = 1
     audio_out_10ms_chunks: int = 1
@@ -557,6 +558,15 @@ class LocalMacTransport(BaseTransport):
         super().__init__()
         if not _is_macos():
             raise RuntimeError("LocalMacTransport only supported on macOS")
+        # If a VAD analyzer is provided (e.g., Silero), wrap it to resample only for VAD.
+        try:
+            if getattr(params, "vad_analyzer", None) is not None and not isinstance(
+                params.vad_analyzer, ResamplingVADAdapter
+            ):
+                params.vad_analyzer = ResamplingVADAdapter(params.vad_analyzer, target_rate=16000)
+        except Exception:
+            pass
+
         self._params = params
         self._vpio = _VPIOLib(lib_path)
         logger.info(
